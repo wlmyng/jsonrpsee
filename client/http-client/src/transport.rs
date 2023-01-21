@@ -127,7 +127,12 @@ impl HttpTransportClient {
 		if response.status().is_success() {
 			Ok(response)
 		} else {
-			Err(Error::RequestFailure { status_code: response.status().into() })
+			let status = response.status();
+			let (_, body) = response.into_parts();
+			let bytes = hyper::body::to_bytes(body).await.unwrap();
+			let result = String::from_utf8(bytes.into_iter().collect()).unwrap();
+			tracing::trace!("HTTP response body: {:?}", result);
+			Err(Error::RequestFailure { status_code: status.into() })
 		}
 	}
 
