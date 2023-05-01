@@ -338,6 +338,7 @@ impl ClientT for Client {
 		serde_json::from_value(json_value).map_err(Error::ParseError)
 	}
 
+	#[instrument(name = "batch", skip(self, batch), level = "trace")]
 	async fn batch_request<'a, R>(&self, batch: BatchRequestBuilder<'a>) -> Result<BatchResponse<'a, R>, Error>
 	where
 		R: DeserializeOwned,
@@ -539,6 +540,7 @@ async fn handle_backend_messages<S: TransportSenderT, R: TransportReceiverT>(
 				}
 				// Error response
 				else if let Ok(err) = serde_json::from_slice::<ErrorResponse>(raw) {
+					tracing::info!("err response: {:?}", err);
 					process_error_response(manager, err)?;
 				} else {
 					return Err(unparse_error(raw));

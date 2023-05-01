@@ -348,6 +348,25 @@ async fn batch_request_with_failed_call_gives_proper_error() {
 }
 
 #[tokio::test]
+async fn batch_request_too_large() {
+	init_logger();
+
+	let mut batch_request = BatchRequestBuilder::new();
+	batch_request.insert("say_hello", rpc_params![]).unwrap();
+	batch_request.insert("say_goodbye", rpc_params![0_u64, 1, 2]).unwrap();
+	batch_request.insert("get_swag", rpc_params![]).unwrap();
+	let server_response =
+		r#"{"jsonrpc":"2.0","error":{"code":-32600,"message":"Invalid request"},"id":null}"#.to_string();
+	let res = run_batch_request_with_response::<String>(batch_request, server_response)
+		.with_default_timeout()
+		.await
+		.unwrap()
+		.unwrap();
+	let err: Vec<_> = res.into_ok().unwrap_err().collect();
+	assert_eq!(err, vec![ErrorObject::from(ErrorCode::MethodNotFound), ErrorObject::borrowed(-32602, &"foo", None)]);
+}
+
+#[tokio::test]
 async fn is_connected_works() {
 	init_logger();
 
