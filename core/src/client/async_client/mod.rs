@@ -512,6 +512,8 @@ async fn handle_backend_messages<S: TransportSenderT, R: TransportReceiverT>(
 	) -> Result<(), Error> {
 		let first_non_whitespace = raw.iter().find(|byte| !byte.is_ascii_whitespace());
 
+		tracing::info!("[backend]: rx: {}", serde_json::from_slice::<serde_json::Value>(raw).unwrap());
+
 		match first_non_whitespace {
 			Some(b'{') => {
 				// Single response to a request.
@@ -555,11 +557,15 @@ async fn handle_backend_messages<S: TransportSenderT, R: TransportReceiverT>(
 
 					for r in raw_responses {
 						let id = if let Ok(response) = serde_json::from_str::<Response<_>>(r.get()) {
-							let id = response.id.try_parse_inner_as_number().ok_or(Error::InvalidRequestId)?;
+							let Some(id) = response.id.try_parse_inner_as_number() else {
+								return Err(unparse_batch_entry(r));
+							};
 							batch.push(InnerBatchResponse { id, result: Ok(response.result) });
 							id
 						} else if let Ok(err) = serde_json::from_str::<ErrorResponse>(r.get()) {
-							let id = err.id().try_parse_inner_as_number().ok_or(Error::InvalidRequestId)?;
+							let Some(id) = err.id().try_parse_inner_as_number() else {
+								return Err(unparse_batch_entry(r));
+							};
 							batch.push(InnerBatchResponse { id, result: Err(err.error_object().clone().into_owned()) });
 							id
 						} else {
@@ -794,4 +800,8 @@ fn unparse_error(raw: &[u8]) -> Error {
 	};
 
 	Error::Custom(format!("Unparseable message: {}", json_str))
+}
+
+fn unparse_batch_entry(json: &serde_json::value::RawValue) -> Error {
+	Error::Custom(format!("Invalid batch entry: `{}` contains invalid request ID; must be integer", json.get()))
 }
