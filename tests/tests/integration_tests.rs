@@ -446,7 +446,7 @@ async fn ws_server_should_stop_subscription_after_client_drop() {
 			"subscribe_hello",
 			"unsubscribe_hello",
 			|_, pending, mut tx| async move {
-				let sink = pending.accept().await?;
+				let sink = pending.accept()?;
 				let msg = SubscriptionMessage::from_json(&1)?;
 				sink.send(msg).await?;
 				sink.closed().await;

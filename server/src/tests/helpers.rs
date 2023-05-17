@@ -85,7 +85,7 @@ pub(crate) async fn server_with_handles() -> (SocketAddr, ServerHandle) {
 			"subscribe_hello",
 			"unsubscribe_hello",
 			|_, pending, _| async move {
-				let sink = pending.accept().await?;
+				let sink = pending.accept()?;
 
 				loop {
 					let _ = &sink;

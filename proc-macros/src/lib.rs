@@ -315,14 +315,14 @@ pub(crate) mod visitor;
 ///         // The stream API can be used to pipe items from the underlying stream
 ///         // as subscription responses.
 ///         async fn sub_override_notif_method(&self, pending: PendingSubscriptionSink) -> SubscriptionResult {
-///             let mut sink = pending.accept().await?;
+///             let mut sink = pending.accept()?;
 ///             sink.send("Response_A".into()).await?;
 ///             Ok(())
 ///         }
 ///
 ///         // Send out two values on the subscription.
 ///         async fn sub(&self, pending: PendingSubscriptionSink) -> SubscriptionResult {
-///             let sink = pending.accept().await?;
+///             let sink = pending.accept()?;
 ///
 ///             let msg1 = SubscriptionMessage::from("Response_A");
 ///             let msg2 = SubscriptionMessage::from("Response_B");

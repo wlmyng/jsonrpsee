@@ -51,14 +51,14 @@ pub(crate) async fn send_ping(sender: &mut Sender) -> Result<(), Error> {
 	sender.flush().await.map_err(Into::into)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct Batch<'a, L: Logger> {
 	pub(crate) data: &'a [u8],
 	pub(crate) call: CallData<'a, L>,
 	pub(crate) max_len: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct CallData<'a, L: Logger> {
 	pub(crate) conn_id: usize,
 	pub(crate) bounded_subscriptions: BoundedSubscriptions,
@@ -69,8 +69,10 @@ pub(crate) struct CallData<'a, L: Logger> {
 	pub(crate) sink: &'a MethodSink,
 	pub(crate) logger: &'a L,
 	pub(crate) request_start: L::Instant,
+	pub(crate) permit: MethodSinkPermit,
 }
 
+/*
 // Batch responses must be sent back as a single message so we read the results from each
 // request in the batch and read the results off of a new channel, `rx_batch`, and then send the
 // complete batch response back to the client over `tx`.
@@ -123,7 +125,7 @@ pub(crate) async fn process_batch_request<L: Logger>(b: Batch<'_, L>) -> Option<
 	} else {
 		Some(batch_response_error(Id::Null, ErrorObject::from(ErrorCode::ParseError)))
 	}
-}
+}*/
 
 pub(crate) async fn process_single_request<L: Logger>(
 	data: &[u8],
@@ -135,7 +137,8 @@ pub(crate) async fn process_single_request<L: Logger>(
 		None
 	} else {
 		let (id, code) = prepare_error(data);
-		Some(CallOrSubscription::Call(MethodResponse::error(id, ErrorObject::from(code))))
+		let rp = MethodResponse::error(id, ErrorObject::from(code));
+		Some(CallOrSubscription::Call((rp, call.permit)))
 	}
 }
 
@@ -163,6 +166,7 @@ pub(crate) async fn execute_call<'a, L: Logger>(req: Request<'a>, call: CallData
 		logger,
 		request_start,
 		bounded_subscriptions,
+		permit,
 	} = call;
 
 	rx_log_from_json(&req, call.max_log_length);
@@ -175,12 +179,12 @@ pub(crate) async fn execute_call<'a, L: Logger>(req: Request<'a>, call: CallData
 		None => {
 			logger.on_call(name, params.clone(), logger::MethodKind::Unknown, TransportProtocol::WebSocket);
 			let response = MethodResponse::error(id, ErrorObject::from(ErrorCode::MethodNotFound));
-			CallOrSubscription::Call(response)
+			CallOrSubscription::Call((response, permit))
 		}
 		Some((name, method)) => match method {
 			MethodCallback::Sync(callback) => {
 				logger.on_call(name, params.clone(), logger::MethodKind::MethodCall, TransportProtocol::WebSocket);
-				CallOrSubscription::Call((callback)(id, params, max_response_body_size as usize))
+				CallOrSubscription::Call(((callback)(id, params, max_response_body_size as usize), permit))
 			}
 			MethodCallback::Async(callback) => {
 				logger.on_call(name, params.clone(), logger::MethodKind::MethodCall, TransportProtocol::WebSocket);
@@ -189,32 +193,34 @@ pub(crate) async fn execute_call<'a, L: Logger>(req: Request<'a>, call: CallData
 				let params = params.into_owned();
 
 				let response = (callback)(id, params, conn_id, max_response_body_size as usize).await;
-				CallOrSubscription::Call(response)
+				CallOrSubscription::Call((response, permit))
 			}
 			MethodCallback::Subscription(callback) => {
 				logger.on_call(name, params.clone(), logger::MethodKind::Subscription, TransportProtocol::WebSocket);
 
 				if let Some(p) = bounded_subscriptions.acquire() {
-					let conn_state = SubscriptionState { conn_id, id_provider, subscription_permit: p };
+					let conn_state =
+						SubscriptionState { conn_id, id_provider, subscription_permit: p, sink_permit: permit };
 					match callback(id, params, sink.clone(), conn_state).await {
 						Ok(r) => CallOrSubscription::Subscription(r),
 						Err(id) => {
-							let response = MethodResponse::error(id, ErrorObject::from(ErrorCode::InternalError));
-							CallOrSubscription::Call(response)
+							//let response = MethodResponse::error(id, ErrorObject::from(ErrorCode::InternalError));
+							//CallOrSubscription::Call((response, permit))
+							todo!();
 						}
 					}
 				} else {
 					let response =
 						MethodResponse::error(id, reject_too_many_subscriptions(bounded_subscriptions.max()));
-					CallOrSubscription::Call(response)
+					CallOrSubscription::Call((response, permit))
 				}
 			}
 			MethodCallback::Unsubscription(callback) => {
 				logger.on_call(name, params.clone(), logger::MethodKind::Unsubscription, TransportProtocol::WebSocket);
 
 				// Don't adhere to any resource or subscription limits; always let unsubscribing happen!
-				let result = callback(id, params, conn_id, max_response_body_size as usize);
-				CallOrSubscription::Call(result)
+				let response = callback(id, params, conn_id, max_response_body_size as usize);
+				CallOrSubscription::Call((response, permit))
 			}
 		},
 	};
@@ -263,6 +269,7 @@ pub(crate) async fn background_task<L: Logger>(sender: Sender, mut receiver: Rec
 	let result = loop {
 		data.clear();
 
+		tracing::info!("waiting for permit: {:?}", sink);
 		let sink_permit = match wait_for_permit(&sink, stopped).await {
 			Some((permit, stop)) => {
 				stopped = stop;
@@ -358,6 +365,7 @@ async fn send_task(
 			// Received message.
 			Either::Left((Some(response), not_ready)) => {
 				// If websocket message send fail then terminate the connection.
+				tracing::info!("send: {response}");
 				if let Err(err) = send_message(&mut ws_sender, response).await {
 					tracing::debug!("WS transport error: send failed: {}", err);
 					break;
@@ -390,6 +398,12 @@ async fn send_task(
 				break;
 			}
 		}
+	}
+
+	tracing::info!("Connection closed");
+
+	while let Some(x) = rx.next().await {
+		tracing::info!("Could not send message: {x}");
 	}
 
 	// Terminate connection and send close message.
@@ -495,6 +509,7 @@ async fn execute_unchecked_call<L: Logger>(params: ExecuteCallParams<L>) {
 				id_provider: &*id_provider,
 				logger: &logger,
 				request_start,
+				permit: sink_permit,
 			};
 
 			if let Some(rp) = process_single_request(&data[start..], call_data).await {
@@ -503,7 +518,7 @@ async fn execute_unchecked_call<L: Logger>(params: ExecuteCallParams<L>) {
 						logger.on_response(&r.result, request_start, TransportProtocol::WebSocket);
 					}
 
-					CallOrSubscription::Call(r) => {
+					CallOrSubscription::Call((r, sink_permit)) => {
 						logger.on_response(&r.result, request_start, TransportProtocol::WebSocket);
 						sink_permit.send_raw(r.result);
 					}
@@ -511,7 +526,9 @@ async fn execute_unchecked_call<L: Logger>(params: ExecuteCallParams<L>) {
 			}
 		}
 		Some((start, b'[')) => {
-			let limit = match batch_requests_config {
+			todo!();
+
+			/*let limit = match batch_requests_config {
 				BatchRequestConfig::Disabled => {
 					let response = MethodResponse::error(
 						Id::Null,
@@ -540,10 +557,10 @@ async fn execute_unchecked_call<L: Logger>(params: ExecuteCallParams<L>) {
 			let response = process_batch_request(Batch { data: &data[start..], call: call_data, max_len: limit }).await;
 
 			if let Some(response) = response {
-				tx_log_from_str(&response, max_log_length);
+				//tx_log_from_str(&response, max_log_length);
 				logger.on_response(&response, request_start, TransportProtocol::WebSocket);
 				sink_permit.send_raw(response);
-			}
+			}*/
 		}
 		_ => {
 			sink_permit.send_error(Id::Null, ErrorCode::ParseError.into());

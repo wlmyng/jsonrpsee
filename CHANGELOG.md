@@ -141,7 +141,7 @@ After this release one must do something like:
 		pending: PendingSubscriptionSink,
 		mut stream: impl Stream<Item = T> + Unpin,
 	) -> Result<(), anyhow::Error> {
-		let mut sink = pending.accept().await?;
+		let mut sink = pending.accept()?;
 
 		loop {
 			tokio::select! {
@@ -216,7 +216,7 @@ Example:
 	module
 		.register_subscription::<RpcResult<(), _, _>::("sub", "s", "unsub", |_, pending, _| async move {
 			// This just answers the RPC call and if this fails => no close notification is sent out.
-			pending.accept().await?;
+			pending.accept()?;
 			// This is sent out as a `close notification/message`.
 			Err(anyhow::anyhow!("The subscription failed"))?;
 		})

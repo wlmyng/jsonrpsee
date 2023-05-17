@@ -48,7 +48,7 @@ use rustc_hash::FxHashMap;
 use serde::de::DeserializeOwned;
 use tokio::sync::{mpsc, oneshot};
 
-use super::IntoResponse;
+use super::{IntoResponse, MethodSinkPermit};
 
 /// A `MethodCallback` is an RPC endpoint, callable with a standard JSON-RPC request,
 /// implemented as a function pointer to a `Fn` function taking four arguments:
@@ -82,14 +82,14 @@ pub type RawRpcResponse = (MethodResponse, mpsc::Receiver<String>);
 /// and `Subscribe` calls are handled differently
 /// because we want to prevent subscriptions to start
 /// before the actual subscription call has been answered.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum CallOrSubscription {
 	/// The subscription callback itself sends back the result
 	/// so it must not be sent back again.
 	Subscription(MethodResponse),
 
 	/// Treat it as ordinary call.
-	Call(MethodResponse),
+	Call((MethodResponse, MethodSinkPermit)),
 }
 
 impl CallOrSubscription {
@@ -97,15 +97,15 @@ impl CallOrSubscription {
 	pub fn as_response(&self) -> &MethodResponse {
 		match &self {
 			Self::Subscription(r) => r,
-			Self::Call(r) => r,
+			Self::Call((r, _r)) => r,
 		}
 	}
 
 	/// Extract the JSON-RPC response.
-	pub fn into_response(self) -> MethodResponse {
+	pub fn to_response(self) -> MethodResponse {
 		match self {
-			Self::Subscription(r) => r,
-			Self::Call(r) => r,
+			Self::Subscription(r) => r.clone(),
+			Self::Call((r, _)) => r.clone(),
 		}
 	}
 }
@@ -270,7 +270,7 @@ impl Methods {
 	///
 	///     let mut module = RpcModule::new(());
 	///     module.register_subscription("hi", "hi", "goodbye", |_, pending, _| async {
-	///         let sink = pending.accept().await?;
+	///         let sink = pending.accept()?;
 	///
 	///         // see comment above.
 	///         sink.send("one answer".into()).await?;
@@ -305,7 +305,9 @@ impl Methods {
 		buf_size: usize,
 		subscription_permit: SubscriptionPermit,
 	) -> RawRpcResponse {
-		let (tx, mut rx) = mpsc::channel(buf_size);
+		todo!();
+
+		/*let (tx, mut rx) = mpsc::channel(buf_size);
 		let id = req.id.clone();
 		let params = Params::new(req.params.map(|params| params.get()));
 
@@ -334,7 +336,7 @@ impl Methods {
 
 		tracing::trace!("[Methods::inner_call] Method: {}, response: {:?}", req.method, response);
 
-		(response, rx)
+		(response, rx)*/
 	}
 
 	/// Helper to create a subscription on the `RPC module` without having to spin up a server.
@@ -353,7 +355,7 @@ impl Methods {
 	///
 	///     let mut module = RpcModule::new(());
 	///     module.register_subscription("hi", "hi", "goodbye", |_, pending, _| async move {
-	///         let sink = pending.accept().await?;
+	///         let sink = pending.accept()?;
 	///         sink.send("one answer".into()).await?;
 	///         Ok(())
 	///     }).unwrap();
@@ -607,7 +609,7 @@ impl<Context: Send + Sync + 'static> RpcModule<Context> {
 	///     // Mark the subscription is accepted after the params has been parsed successful.
 	///     // This is actually responds the underlying RPC method call and may fail if the
 	///     // connection is closed.
-	///     let sink = pending.accept().await?;
+	///     let sink = pending.accept()?;
 	///     let sum = x + (*ctx);
 	///
 	///     // This will send out an error notification if it fails.
@@ -697,6 +699,7 @@ impl<Context: Send + Sync + 'static> RpcModule<Context> {
 
 					let sink = PendingSubscriptionSink {
 						inner: method_sink.clone(),
+						sink_permit: conn.sink_permit,
 						method: notif_method_name,
 						subscribers: subscribers.clone(),
 						uniq_sub,

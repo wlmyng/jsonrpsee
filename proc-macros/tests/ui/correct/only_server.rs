@@ -29,7 +29,7 @@ impl RpcServer for RpcServerImpl {
 	}
 
 	async fn sub(&self, pending: PendingSubscriptionSink) -> SubscriptionResult {
-		let sink = pending.accept().await?;
+		let sink = pending.accept()?;
 
 		sink.send("Response_A".into()).await?;
 		sink.send("Response_B".into()).await?;

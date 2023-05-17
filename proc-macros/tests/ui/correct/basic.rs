@@ -66,7 +66,7 @@ impl RpcServer for RpcServerImpl {
 	}
 
 	async fn sub(&self, pending: PendingSubscriptionSink) -> SubscriptionResult {
-		let sink = pending.accept().await?;
+		let sink = pending.accept()?;
 
 		sink.send("Response_A".into()).await?;
 		sink.send("Response_B".into()).await?;
@@ -75,7 +75,7 @@ impl RpcServer for RpcServerImpl {
 	}
 
 	async fn sub_with_params(&self, pending: PendingSubscriptionSink, val: u32) -> SubscriptionResult {
-		let sink = pending.accept().await?;
+		let sink = pending.accept()?;
 		let msg = SubscriptionMessage::from_json(&val)?;
 
 		sink.send(msg.clone()).await?;
@@ -85,7 +85,7 @@ impl RpcServer for RpcServerImpl {
 	}
 
 	async fn sub_with_override_notif_method(&self, pending: PendingSubscriptionSink) -> SubscriptionResult {
-		let sink = pending.accept().await?;
+		let sink = pending.accept()?;
 
 		let msg = SubscriptionMessage::from_json(&1)?;
 		sink.send(msg).await?;

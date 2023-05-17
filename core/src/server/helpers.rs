@@ -129,19 +129,22 @@ impl MethodSink {
 	///
 	/// Returns the message if the send fails such that either can be thrown away or re-sent later.
 	pub fn try_send(&mut self, msg: String) -> Result<(), TrySendError> {
-		tx_log_from_str(&msg, self.max_log_length);
+		tracing::info!("waiting to try_send: {msg}");
+		//tx_log_from_str(&msg, self.max_log_length);
 		self.tx.try_send(msg).map_err(Into::into)
 	}
 
 	/// Async send which will wait until there is space in channel buffer or that the subscription is disconnected.
 	pub async fn send(&self, msg: String) -> Result<(), DisconnectError> {
-		tx_log_from_str(&msg, self.max_log_length);
+		tracing::info!("waiting to send: {msg}");
+		//tx_log_from_str(&msg, self.max_log_length);
 		self.tx.send(msg).await.map_err(Into::into)
 	}
 
 	/// Similar to to `MethodSink::send` but only waits for a limited time.
 	pub async fn send_timeout(&self, msg: String, timeout: Duration) -> Result<(), SendTimeoutError> {
-		tx_log_from_str(&msg, self.max_log_length);
+		tracing::info!("waiting to send_timeout: {msg}");
+		//tx_log_from_str(&msg, self.max_log_length);
 		self.tx.send_timeout(msg, timeout).await.map_err(Into::into)
 	}
 
@@ -173,8 +176,8 @@ impl MethodSinkPermit {
 	/// Send a raw JSON-RPC message to the client, `MethodSink` does not check the validity
 	/// of the JSON being sent.
 	pub fn send_raw(self, json: String) {
+		//tx_log_from_str(&json, self.max_log_length);
 		self.tx.send(json.clone());
-		tx_log_from_str(&json, self.max_log_length);
 	}
 }
 

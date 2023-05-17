@@ -70,7 +70,7 @@ impl RpcServer<ExampleHash, ExampleStorageKey> for RpcServerImpl {
 		pending: PendingSubscriptionSink,
 		_keys: Option<Vec<ExampleStorageKey>>,
 	) -> SubscriptionResult {
-		let sink = pending.accept().await?;
+		let sink = pending.accept()?;
 		let msg = SubscriptionMessage::from_json(&vec![[0; 32]])?;
 		sink.send(msg).await?;
 

@@ -27,6 +27,7 @@
 //! Subscription related types and traits for server implementations.
 
 use super::helpers::{MethodResponse, MethodSink};
+use super::MethodSinkPermit;
 use crate::server::error::{DisconnectError, PendingSubscriptionAcceptError, SendTimeoutError, TrySendError};
 use crate::server::rpc_module::ConnectionId;
 use crate::{traits::IdProvider, Error, StringError};
@@ -220,6 +221,8 @@ impl IsUnsubscribed {
 pub struct PendingSubscriptionSink {
 	/// Sink.
 	pub(crate) inner: MethodSink,
+	/// Sink permit.
+	pub(crate) sink_permit: MethodSinkPermit,
 	/// MethodCallback.
 	pub(crate) method: &'static str,
 	/// Shared Mutex of subscriptions for this method.
@@ -244,9 +247,9 @@ impl PendingSubscriptionSink {
 	/// If this is used in the async subscription callback
 	/// the return value is simply ignored because no further notification are propagated
 	/// once reject has been called.
-	pub async fn reject(self, err: impl Into<ErrorObjectOwned>) {
+	pub fn reject(self, err: impl Into<ErrorObjectOwned>) {
 		let err = MethodResponse::error(self.id, err.into());
-		_ = self.inner.send(err.result.clone()).await;
+		_ = self.sink_permit.send_raw(err.result.clone());
 		_ = self.subscribe.send(err);
 	}
 
@@ -255,7 +258,7 @@ impl PendingSubscriptionSink {
 	/// # Panics
 	///
 	/// Panics if the subscription response exceeded the `max_response_size`.
-	pub async fn accept(self) -> Result<SubscriptionSink, PendingSubscriptionAcceptError> {
+	pub fn accept(self) -> Result<SubscriptionSink, PendingSubscriptionAcceptError> {
 		let response = MethodResponse::response(
 			self.id,
 			ResponsePayload::result_borrowed(&self.uniq_sub.sub_id),
@@ -269,7 +272,7 @@ impl PendingSubscriptionSink {
 		//
 		// The same message is sent twice here because one is sent directly to the transport layer and
 		// the other one is sent internally to accept the subscription and register it in the RPC logger.
-		self.inner.send(response.result.clone()).await.map_err(|_| PendingSubscriptionAcceptError)?;
+		self.sink_permit.send_raw(response.result.clone());
 		self.subscribe.send(response).map_err(|_| PendingSubscriptionAcceptError)?;
 
 		if success {
@@ -467,6 +470,8 @@ pub struct SubscriptionState<'a> {
 	pub id_provider: &'a dyn IdProvider,
 	/// Subscription limit
 	pub subscription_permit: SubscriptionPermit,
+	/// ---
+	pub sink_permit: MethodSinkPermit,
 }
 
 pub(crate) fn sub_message_to_json(

@@ -159,7 +159,7 @@ mod rpc_impl {
 		}
 
 		async fn sub(&self, pending: PendingSubscriptionSink) -> SubscriptionResult {
-			let sink = pending.accept().await?;
+			let sink = pending.accept()?;
 			sink.send("Response_A".into()).await?;
 			sink.send("Response_B".into()).await?;
 
@@ -167,7 +167,7 @@ mod rpc_impl {
 		}
 
 		async fn sub_with_params(&self, pending: PendingSubscriptionSink, val: u32) -> SubscriptionResult {
-			let sink = pending.accept().await?;
+			let sink = pending.accept()?;
 			let msg = SubscriptionMessage::from_json(&val)?;
 			sink.send(msg.clone()).await?;
 			sink.send(msg).await?;
@@ -176,7 +176,7 @@ mod rpc_impl {
 		}
 
 		async fn sub_not_result(&self, pending: PendingSubscriptionSink) {
-			let sink = pending.accept().await.unwrap();
+			let sink = pending.accept().unwrap();
 			sink.send("lo".into()).await.unwrap();
 		}
 

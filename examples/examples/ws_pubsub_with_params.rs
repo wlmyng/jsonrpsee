@@ -71,7 +71,7 @@ async fn run_server() -> anyhow::Result<SocketAddr> {
 			let idx = match params.one::<usize>() {
 				Ok(p) => p,
 				Err(e) => {
-					let _ = pending.reject(e).await;
+					pending.reject(e);
 					return Ok(());
 				}
 			};
@@ -109,7 +109,7 @@ pub async fn pipe_from_stream_and_drop<T: Serialize>(
 	pending: PendingSubscriptionSink,
 	mut stream: impl Stream<Item = T> + Unpin,
 ) -> Result<(), anyhow::Error> {
-	let mut sink = pending.accept().await?;
+	let mut sink = pending.accept()?;
 
 	loop {
 		tokio::select! {

@@ -74,7 +74,7 @@ pub async fn server_with_subscription_and_handle() -> (SocketAddr, ServerHandle)
 				let count = match params.one::<usize>().map(|c| c.wrapping_add(1)) {
 					Ok(count) => count,
 					Err(e) => {
-						let _ = pending.reject(e).await;
+						pending.reject(e);
 						return Ok(());
 					}
 				};
@@ -89,7 +89,7 @@ pub async fn server_with_subscription_and_handle() -> (SocketAddr, ServerHandle)
 
 	module
 		.register_subscription("subscribe_noop", "subscribe_noop", "unsubscribe_noop", |_, pending, _| async {
-			let _sink = pending.accept().await?;
+			let _sink = pending.accept()?;
 			tokio::time::sleep(Duration::from_secs(1)).await;
 			Err(Error::Custom("Server closed the stream because it was lazy".to_string()).into())
 		})
@@ -105,14 +105,14 @@ pub async fn server_with_subscription_and_handle() -> (SocketAddr, ServerHandle)
 
 	module
 		.register_subscription("subscribe_option", "n", "unsubscribe_option", |_, pending, _| async move {
-			let _ = pending.accept().await;
+			pending.accept().unwrap();
 			SubscriptionCloseResponse::None
 		})
 		.unwrap();
 
 	module
 		.register_subscription("subscribe_unit", "n", "unubscribe_unit", |_, pending, _| async move {
-			let _sink = pending.accept().await?;
+			let _sink = pending.accept()?;
 			tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 			Ok(())
 		})
@@ -232,7 +232,7 @@ pub async fn pipe_from_stream_and_drop<T: Serialize>(
 	pending: PendingSubscriptionSink,
 	mut stream: impl Stream<Item = T> + Unpin,
 ) -> Result<(), anyhow::Error> {
-	let mut sink = pending.accept().await?;
+	let mut sink = pending.accept()?;
 
 	loop {
 		tokio::select! {

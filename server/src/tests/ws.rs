@@ -565,7 +565,7 @@ async fn custom_subscription_id_works() {
 	let mut module = RpcModule::new(());
 	module
 		.register_subscription("subscribe_hello", "subscribe_hello", "unsubscribe_hello", |_, sink, _| async {
-			let sink = sink.accept().await.unwrap();
+			let sink = sink.accept().unwrap();
 
 			assert!(matches!(sink.subscription_id(), SubscriptionId::Str(id) if id == "0xdeadbeef"));
 
@@ -732,7 +732,7 @@ async fn ws_server_backpressure_works() {
 			"n",
 			"unsubscribe_with_backpressure_aggregation",
 			move |_, pending, mut backpressure_tx| async move {
-				let sink = pending.accept().await?;
+				let sink = pending.accept()?;
 				let n = SubscriptionMessage::from_json(&1)?;
 				let bp = SubscriptionMessage::from_json(&2)?;
 
