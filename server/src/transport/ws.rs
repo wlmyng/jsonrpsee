@@ -222,7 +222,7 @@ pub(crate) async fn execute_call<'a, L: Logger>(req: Request<'a>, call: CallData
 	let r = response.as_response();
 
 	tx_log_from_str(&r.result, max_log_length);
-	logger.on_result(name, r.success, request_start, TransportProtocol::WebSocket);
+	logger.on_result(name, r.success, r.error_code, request_start, TransportProtocol::WebSocket);
 	response
 }
 

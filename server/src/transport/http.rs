@@ -257,14 +257,14 @@ pub(crate) async fn execute_call<L: Logger>(req: Request<'_>, call: CallData<'_,
 	};
 
 	tx_log_from_str(&response.result, max_log_length);
-	logger.on_result(name, response.success, request_start, TransportProtocol::Http);
+	logger.on_result(name, response.success, response.error_code, request_start, TransportProtocol::Http);
 	response
 }
 
 #[instrument(name = "notification", fields(method = notif.method.as_ref()), skip(notif, max_log_length), level = "TRACE")]
 fn execute_notification(notif: Notif, max_log_length: u32) -> MethodResponse {
 	rx_log_from_json(&notif, max_log_length);
-	let response = MethodResponse { result: String::new(), success: true };
+	let response = MethodResponse { result: String::new(), success: true, error_code: None };
 	tx_log_from_str(&response.result, max_log_length);
 	response
 }

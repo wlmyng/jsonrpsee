@@ -32,13 +32,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use helpers::init_logger;
+use jsonrpsee::core::RpcResult;
 use jsonrpsee::core::{client::ClientT, Error};
 use jsonrpsee::http_client::HttpClientBuilder;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::rpc_params;
 use jsonrpsee::server::logger::{HttpRequest, Logger, MethodKind, TransportProtocol};
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
-use jsonrpsee::types::Params;
+use jsonrpsee::types::{Params, ErrorObjectOwned};
 use jsonrpsee::ws_client::WsClientBuilder;
 use jsonrpsee::RpcModule;
 use tokio::time::sleep;
@@ -54,8 +55,8 @@ struct CounterInner {
 	connections: (u32, u32),
 	/// (Number of started requests, number of finished requests)
 	requests: (u32, u32),
-	/// Mapping method names to (number of calls, ids of successfully completed calls)
-	calls: HashMap<String, (u32, Vec<u32>)>,
+	/// Mapping method names to (number of calls, (Vec<ids of successfully completed calls>, Vec<error codes of failed calls>))
+	calls: HashMap<String, (u32, (Vec<u32>, Vec<i32>))>,
 }
 
 impl Logger for Counter {
@@ -77,14 +78,18 @@ impl Logger for Counter {
 
 	fn on_call(&self, name: &str, _params: Params, _kind: MethodKind, _t: TransportProtocol) {
 		let mut inner = self.inner.lock().unwrap();
-		let entry = inner.calls.entry(name.into()).or_insert((0, Vec::new()));
+		let entry = inner.calls.entry(name.into()).or_insert((0, (Vec::new(), Vec::new())));
 
 		entry.0 += 1;
 	}
 
-	fn on_result(&self, name: &str, success: bool, n: u32, _t: TransportProtocol) {
+	fn on_result(&self, name: &str, success: bool, error_code: Option<i32>, n: u32, _t: TransportProtocol) {
 		if success {
-			self.inner.lock().unwrap().calls.get_mut(name).unwrap().1.push(n);
+			self.inner.lock().unwrap().calls.get_mut(name).unwrap().1 .0.push(n);
+		} else {
+			if let Some(code) = error_code {
+				self.inner.lock().unwrap().calls.get_mut(name).unwrap().1 .1.push(code);
+			}
 		}
 	}
 
@@ -104,6 +109,17 @@ fn test_module() -> RpcModule<()> {
 		async fn hello(&self) -> String {
 			sleep(Duration::from_millis(50)).await;
 			"hello".to_string()
+		}
+
+		#[method(name = "test_custom_error")]
+		async fn test_custom_error(&self, greeting: String) -> RpcResult<String> {
+			sleep(Duration::from_millis(50)).await;
+			if greeting != "hello" {
+				Err(ErrorObjectOwned::owned(-54321, "c", None::<()>))
+			} else {
+				Err(ErrorObjectOwned::owned(-12345, "hello received", None::<()>))
+			}
+			
 		}
 	}
 
@@ -154,13 +170,20 @@ async fn ws_server_logger() {
 	let res: Result<String, Error> = client.request("unknown_method", rpc_params![]).await;
 	assert!(res.is_err());
 
+	let res: Result<String, Error> = client.request("say_hello", rpc_params![42]).await;
+	assert!(res.is_err());
+
 	{
 		let inner = counter.inner.lock().unwrap();
 
 		assert_eq!(inner.connections, (1, 0));
 		assert_eq!(inner.requests, (5, 5));
-		assert_eq!(inner.calls["say_hello"], (3, vec![0, 2, 3]));
-		assert_eq!(inner.calls["unknown_method"], (2, vec![]));
+		assert_eq!(inner.calls["say_hello"].0, 4);
+		assert_eq!(inner.calls["say_hello"].1 .0, vec![0, 2, 3]);
+		assert_eq!(inner.calls["say_hello"].1 .1, vec![-32700]);
+		assert_eq!(inner.calls["unknown_method"].0, 2);
+		assert_eq!(inner.calls["unknown_method"].1 .0.len(), 0);
+		assert_eq!(inner.calls["unknown_method"].1 .1, vec![-32601, -32601]);
 	}
 
 	server_handle.stop().unwrap();
@@ -193,11 +216,24 @@ async fn http_server_logger() {
 	let res: Result<String, Error> = client.request("unknown_method", rpc_params![]).await;
 	assert!(res.is_err());
 
+	let res: Result<String, Error> = client.request("test_custom_error", rpc_params![]).await;
+	assert!(res.is_err());
+
+	let res: Result<String, Error> = client.request("test_custom_error", rpc_params!["hello"]).await;
+	assert!(res.is_err());
+
+	let res: Result<String, Error> = client.request("test_custom_error", rpc_params!["goodbye"]).await;
+	assert!(res.is_err());
+
 	{
 		let inner = counter.inner.lock().unwrap();
-		assert_eq!(inner.requests, (5, 5));
-		assert_eq!(inner.calls["say_hello"], (3, vec![0, 2, 3]));
-		assert_eq!(inner.calls["unknown_method"], (2, vec![]));
+		assert_eq!(inner.requests, (6, 6));
+		assert_eq!(inner.calls["say_hello"].0, 3);
+		assert_eq!(inner.calls["say_hello"].1 .0, vec![0, 2, 3]);
+		assert_eq!(inner.calls["unknown_method"].0, 2);
+		assert_eq!(inner.calls["unknown_method"].1 .0.len(), 0);
+		assert_eq!(inner.calls["unknown_method"].1 .1, vec![-32601, -32601]);
+		assert_eq!(inner.calls["test_custom_error"].1.1, vec![-54321]);
 	}
 
 	server_handle.stop().unwrap();
