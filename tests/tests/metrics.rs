@@ -82,7 +82,7 @@ impl Logger for Counter {
 		entry.0 += 1;
 	}
 
-	fn on_result(&self, name: &str, success: bool, n: u32, _t: TransportProtocol) {
+	fn on_result(&self, name: &str, success: bool, _error_code: Option<i32>, n: u32, _t: TransportProtocol) {
 		if success {
 			self.inner.lock().unwrap().calls.get_mut(name).unwrap().1.push(n);
 		}
