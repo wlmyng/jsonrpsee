@@ -56,7 +56,14 @@ impl logger::Logger for Timings {
 		println!("[Timings:on_call] method: '{}', params: {:?}, kind: {}", name, params, kind);
 	}
 
-	fn on_result(&self, name: &str, success: bool, error_code: Option<i32>, started_at: Self::Instant, _t: TransportProtocol) {
+	fn on_result(
+		&self,
+		name: &str,
+		success: bool,
+		error_code: Option<i32>,
+		started_at: Self::Instant,
+		_t: TransportProtocol,
+	) {
 		println!("[Timings] call={}, worked? {}, duration {:?}", name, success, started_at.elapsed());
 	}
 
@@ -106,7 +113,14 @@ impl logger::Logger for ThreadWatcher {
 		threads as isize
 	}
 
-	fn on_result(&self, _name: &str, _succees: bool, error_code: Option<i32>, started_at: Self::Instant, _t: TransportProtocol) {
+	fn on_result(
+		&self,
+		_name: &str,
+		_succees: bool,
+		error_code: Option<i32>,
+		started_at: Self::Instant,
+		_t: TransportProtocol,
+	) {
 		let current_nr_threads = Self::count_threads() as isize;
 		println!("[ThreadWatcher::on_result] {} threads", current_nr_threads - started_at);
 	}

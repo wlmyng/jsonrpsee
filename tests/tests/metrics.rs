@@ -55,7 +55,7 @@ struct CounterInner {
 	/// (Number of started requests, number of finished requests)
 	requests: (u32, u32),
 	/// Mapping method names to (number of calls, (Vec<ids of successfully completed calls>, Vec<error codes of failed calls>))
-	calls: HashMap<String, (u32, (Vec<u32>, Vec<i32>))>
+	calls: HashMap<String, (u32, (Vec<u32>, Vec<i32>))>,
 }
 
 impl Logger for Counter {
@@ -84,11 +84,10 @@ impl Logger for Counter {
 
 	fn on_result(&self, name: &str, success: bool, error_code: Option<i32>, n: u32, _t: TransportProtocol) {
 		if success {
-			self.inner.lock().unwrap().calls.get_mut(name).unwrap().1.0.push(n);
-		}
-		else {
+			self.inner.lock().unwrap().calls.get_mut(name).unwrap().1 .0.push(n);
+		} else {
 			if let Some(code) = error_code {
-				self.inner.lock().unwrap().calls.get_mut(name).unwrap().1.1.push(code);
+				self.inner.lock().unwrap().calls.get_mut(name).unwrap().1 .1.push(code);
 			}
 		}
 	}
@@ -178,11 +177,11 @@ async fn ws_server_logger() {
 		assert_eq!(inner.connections, (1, 0));
 		assert_eq!(inner.requests, (5, 5));
 		assert_eq!(inner.calls["say_hello"].0, 4);
-		assert_eq!(inner.calls["say_hello"].1.0, vec![0, 2, 3]);
-		assert_eq!(inner.calls["say_hello"].1.1, vec![-32700]);
+		assert_eq!(inner.calls["say_hello"].1 .0, vec![0, 2, 3]);
+		assert_eq!(inner.calls["say_hello"].1 .1, vec![-32700]);
 		assert_eq!(inner.calls["unknown_method"].0, 2);
-		assert_eq!(inner.calls["unknown_method"].1.0.len(), 0);
-		assert_eq!(inner.calls["unknown_method"].1.1, vec![-32601, -32601]);
+		assert_eq!(inner.calls["unknown_method"].1 .0.len(), 0);
+		assert_eq!(inner.calls["unknown_method"].1 .1, vec![-32601, -32601]);
 	}
 
 	server_handle.stop().unwrap();
@@ -219,10 +218,10 @@ async fn http_server_logger() {
 		let inner = counter.inner.lock().unwrap();
 		assert_eq!(inner.requests, (5, 5));
 		assert_eq!(inner.calls["say_hello"].0, 3);
-		assert_eq!(inner.calls["say_hello"].1.0, vec![0, 2, 3]);
+		assert_eq!(inner.calls["say_hello"].1 .0, vec![0, 2, 3]);
 		assert_eq!(inner.calls["unknown_method"].0, 2);
-		assert_eq!(inner.calls["unknown_method"].1.0.len(), 0);
-		assert_eq!(inner.calls["unknown_method"].1.1, vec![-32601]);
+		assert_eq!(inner.calls["unknown_method"].1 .0.len(), 0);
+		assert_eq!(inner.calls["unknown_method"].1 .1, vec![-32601]);
 	}
 
 	server_handle.stop().unwrap();
