@@ -60,7 +60,7 @@ impl logger::Logger for Timings {
 		&self,
 		name: &str,
 		success: bool,
-		error_code: Option<i32>,
+		_error_code: Option<i32>,
 		started_at: Self::Instant,
 		_t: TransportProtocol,
 	) {
@@ -117,7 +117,7 @@ impl logger::Logger for ThreadWatcher {
 		&self,
 		_name: &str,
 		_succees: bool,
-		error_code: Option<i32>,
+		_error_code: Option<i32>,
 		started_at: Self::Instant,
 		_t: TransportProtocol,
 	) {

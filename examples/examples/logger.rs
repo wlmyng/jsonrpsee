@@ -56,7 +56,7 @@ impl logger::Logger for Timings {
 		&self,
 		name: &str,
 		succeess: bool,
-		error_code: Option<i32>,
+		_error_code: Option<i32>,
 		started_at: Self::Instant,
 		_t: TransportProtocol,
 	) {
