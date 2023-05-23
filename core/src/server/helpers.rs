@@ -220,6 +220,8 @@ pub struct MethodResponse {
 	pub result: String,
 	/// Indicates whether the call was successful or not.
 	pub success: bool,
+	/// Optional error code
+	pub error_code: Option<i32>
 }
 
 impl MethodResponse {
@@ -232,7 +234,7 @@ impl MethodResponse {
 			Ok(_) => {
 				// Safety - serde_json does not emit invalid UTF-8.
 				let result = unsafe { String::from_utf8_unchecked(writer.into_bytes()) };
-				Self { result, success: true }
+				Self { result, success: true, error_code: None }
 			}
 			Err(err) => {
 				tracing::error!("Error serializing response: {:?}", err);
@@ -242,11 +244,11 @@ impl MethodResponse {
 					let err = ErrorObject::owned(OVERSIZED_RESPONSE_CODE, OVERSIZED_RESPONSE_MSG, Some(data));
 					let result = serde_json::to_string(&ErrorResponse::borrowed(err, id)).unwrap();
 
-					Self { result, success: false }
+					Self { result, success: false, error_code: Some(OVERSIZED_RESPONSE_CODE) }
 				} else {
 					let result =
 						serde_json::to_string(&ErrorResponse::borrowed(ErrorCode::InternalError.into(), id)).unwrap();
-					Self { result, success: false }
+					Self { result, success: false , error_code: Some(ErrorCode::InternalError.code()) }
 				}
 			}
 		}
@@ -254,8 +256,10 @@ impl MethodResponse {
 
 	/// Create a `MethodResponse` from an error.
 	pub fn error<'a>(id: Id, err: impl Into<ErrorObject<'a>>) -> Self {
-		let result = serde_json::to_string(&ErrorResponse::borrowed(err.into(), id)).expect("valid JSON; qed");
-		Self { result, success: false }
+		let error_object = err.into();
+		let error_code = error_object.code();
+		let result = serde_json::to_string(&ErrorResponse::borrowed(error_object, id)).expect("valid JSON; qed");
+		Self { result, success: false, error_code: Some(error_code) }
 	}
 }
 
