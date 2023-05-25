@@ -194,6 +194,8 @@ pub struct MethodResponse {
 	pub result: String,
 	/// Indicates whether the call was successful or not.
 	pub success: bool,
+	/// Optional error code
+	pub error_code: Option<i32>
 }
 
 impl MethodResponse {
@@ -204,12 +206,19 @@ impl MethodResponse {
 		T: Serialize + Clone,
 	{
 		let mut writer = BoundedWriter::new(max_response_size);
+		let response = Response::new(result, id.clone());
 
-		match serde_json::to_writer(&mut writer, &Response::new(result, id.clone())) {
+		match serde_json::to_writer(&mut writer, &response) {
 			Ok(_) => {
 				// Safety - serde_json does not emit invalid UTF-8.
 				let result = unsafe { String::from_utf8_unchecked(writer.into_bytes()) };
-				Self { result, success: true }
+				let error_code = if let ResponsePayload::Error(e) = &response.payload {
+					Some(e.code())
+				} else {
+					None
+				};
+		
+				Self { result, success: true, error_code }
 			}
 			Err(err) => {
 				tracing::error!("Error serializing response: {:?}", err);
@@ -224,21 +233,29 @@ impl MethodResponse {
 					let result =
 						serde_json::to_string(&Response::new(err, id)).expect("JSON serialization infallible; qed");
 
-					Self { result, success: false }
+					Self { result, success: false, error_code: Some(OVERSIZED_RESPONSE_CODE) }
 				} else {
 					let result = serde_json::to_string(&Response::new(ErrorCode::InternalError.into(), id))
-						.expect("JSON serialization infallible; qed");
-					Self { result, success: false }
+						.expect("JSON serialization infallible; qed");					
+					Self { result, success: false , error_code: Some(ErrorCode::InternalError.code()) }
 				}
 			}
 		}
 	}
 
 	/// Create a `MethodResponse` from an error.
-	pub fn error<'a>(id: Id, err: impl Into<ErrorObject<'a>>) -> Self {
+	pub fn error<'a>(id: Id, err: impl Into<ErrorObject<'a>>) -> Self {		
 		let err = ResponsePayload::error_borrowed(err);
-		let result = serde_json::to_string(&Response::new(err, id)).expect("JSON serialization infallible; qed");
-		Self { result, success: false }
+		let response = Response::new(err, id);
+		let result = serde_json::to_string(&response).expect("JSON serialization infallible; qed");
+
+		let error_code = if let ResponsePayload::Error(e) = &response.payload {
+			Some(e.code())
+		} else {
+			None
+		};
+	
+		Self { result, success: false, error_code }
 	}
 }
 
