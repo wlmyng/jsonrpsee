@@ -257,6 +257,7 @@ pub(crate) async fn execute_call<L: Logger>(req: Request<'_>, call: CallData<'_,
 	};
 
 	tx_log_from_str(&response.result, max_log_length);
+	println!("{:?}", response);
 	logger.on_result(name, response.success, request_start, TransportProtocol::Http);
 	response
 }

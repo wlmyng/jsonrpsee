@@ -32,13 +32,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use helpers::init_logger;
+use jsonrpsee::core::RpcResult;
 use jsonrpsee::core::{client::ClientT, Error};
 use jsonrpsee::http_client::HttpClientBuilder;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::rpc_params;
 use jsonrpsee::server::logger::{HttpRequest, Logger, MethodKind, TransportProtocol};
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
-use jsonrpsee::types::Params;
+use jsonrpsee::types::{Params, ErrorObjectOwned};
 use jsonrpsee::ws_client::WsClientBuilder;
 use jsonrpsee::RpcModule;
 use tokio::time::sleep;
@@ -104,6 +105,16 @@ fn test_module() -> RpcModule<()> {
 		async fn hello(&self) -> String {
 			sleep(Duration::from_millis(50)).await;
 			"hello".to_string()
+		}
+		#[method(name = "test_custom_error")]
+		async fn test_custom_error(&self, greeting: String) -> RpcResult<String> {
+			sleep(Duration::from_millis(50)).await;
+			if greeting != "hello" {
+				Err(ErrorObjectOwned::owned(-54321, "c", None::<()>))
+			} else {
+				Err(ErrorObjectOwned::owned(-12345, "hello received", None::<()>))
+			}
+
 		}
 	}
 
@@ -199,6 +210,15 @@ async fn http_server_logger() {
 		assert_eq!(inner.calls["say_hello"], (3, vec![0, 2, 3]));
 		assert_eq!(inner.calls["unknown_method"], (2, vec![]));
 	}
+
+	let res: Result<String, Error> = client.request("test_custom_error", rpc_params![]).await;
+	assert!(res.is_err());
+
+	let res: Result<String, Error> = client.request("test_custom_error", rpc_params!["hello"]).await;
+	assert!(res.is_err());
+
+	let res: Result<String, Error> = client.request("test_custom_error", rpc_params!["goodbye"]).await;
+	assert!(res.is_err());
 
 	server_handle.stop().unwrap();
 	server_handle.stopped().await;
