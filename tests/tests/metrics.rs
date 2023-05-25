@@ -114,7 +114,7 @@ fn test_module() -> RpcModule<()> {
 			if greeting != "hello" {
 				Err(Error::Call(CallError::Custom(ErrorObjectOwned::owned(-54321, "c", None::<()>))))
 			} else {
-				Err(Error::Call(CallError::Custom(ErrorObjectOwned::owned(-54321, "hello received", None::<()>))))				
+				Err(Error::Call(CallError::Custom(ErrorObjectOwned::owned(-12345, "hello received", None::<()>))))				
 			}
 			
 		}
