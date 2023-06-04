@@ -316,7 +316,7 @@ impl<B, L> Builder<B, L> {
 	///          println!("[MyLogger::on_call] method: '{}' params: {:?}, kind: {:?}, transport: {}", method_name, params, kind, transport);
 	///     }
 	///
-	///     fn on_result(&self, method_name: &str, success: bool, started_at: Self::Instant, transport: TransportProtocol) {
+	///     fn on_result(&self, method_name: &str, success: bool, error_code: Option<i32>, started_at: Self::Instant, transport: TransportProtocol) {
 	///          println!("[MyLogger::on_result] '{}', worked? {}, time elapsed {:?}, transport: {}", method_name, success, started_at.elapsed(), transport);
 	///     }
 	///
